@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.seekconsultingltd.fahmiq",
+      "bundleIdentifier": "com.seekconsultingltd.forgeiq",
       "buildNumber": "2",
       "infoPlist": {
         "NSCameraUsageDescription": "Scan documents for AI analysis",

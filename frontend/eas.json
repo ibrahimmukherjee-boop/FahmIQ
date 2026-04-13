@@ -1,0 +1,38 @@
+{
+  "cli": {
+    "version": ">= 18.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "simulator": false,
+        "buildConfiguration": "Debug"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "ios": {
+        "buildConfiguration": "Release"
+      }
+    },
+    "production": {
+      "ios": {
+        "buildConfiguration": "Release",
+        "autoIncrement": true
+      },
+      "autoSubmit": false
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "appleId": "fahmiq@seekconsulting.co.uk",
+        "ascAppId": "6761907571",
+        "appleTeamId": "RZG4B93C88"
+      }
+    }
+  }
+}
