@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Forge IQ — System Architecture</title>
+<style>
+  :root {
+    --bg: #0A0A0F;
+    --surface: #12121A;
+    --surface-2: #1C1C28;
+    --surface-3: #24243A;
+    --accent: #6366F1;
+    --accent-dim: rgba(99,102,241,0.15);
+    --accent-border: rgba(99,102,241,0.4);
+    --text: #F0F0FF;
+    --muted: #8888AA;
+    --faint: #44445A;
+    --green: #22C55E;
+    --amber: #F59E0B;
+    --red: #EF4444;
+    --teal: #14B8A6;
+    --purple: #A855F7;
+    --blue: #3B82F6;
+    --border: rgba(255,255,255,0.07);
+    --radius: 12px;
+    --radius-lg: 20px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    padding: 40px 32px 80px;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 36px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 6px; }
+  h2 { font-size: 20px; font-weight: 600; margin: 48px 0 16px; color: var(--text); letter-spacing: -0.2px; }
+  h3 { font-size: 14px; font-weight: 600; margin: 0 0 8px; color: var(--text); text-transform: uppercase; letter-spacing: 0.8px; }
+  p { color: var(--muted); margin-bottom: 12px; max-width: 80ch; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: 0.4px; }
+  .tag-indigo { background: var(--accent-dim); color: var(--accent); border: 1px solid var(--accent-border); }
+  .tag-green { background: rgba(34,197,94,0.12); color: var(--green); border: 1px solid rgba(34,197,94,0.3); }
+  .tag-amber { background: rgba(245,158,11,0.12); color: var(--amber); border: 1px solid rgba(245,158,11,0.3); }
+  .tag-purple { background: rgba(168,85,247,0.12); color: var(--purple); border: 1px solid rgba(168,85,247,0.3); }
+  .tag-teal { background: rgba(20,184,166,0.12); color: var(--teal); border: 1px solid rgba(20,184,166,0.3); }
+  .tag-blue { background: rgba(59,130,246,0.12); color: var(--blue); border: 1px solid rgba(59,130,246,0.3); }
+  .subtitle { color: var(--muted); font-size: 16px; margin-bottom: 4px; }
+  .meta { color: var(--faint); font-size: 12px; margin-bottom: 32px; }
+  .divider { height: 1px; background: var(--border); margin: 16px 0; }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px 24px;
+    margin-bottom: 12px;
+  }
+  .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin-bottom: 12px; }
+  .card-accent { border-color: var(--accent-border); background: var(--accent-dim); }
+  .layer-label {
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px;
+    color: var(--muted); margin-bottom: 10px;
+  }
+  code {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 12px;
+    background: var(--surface-2);
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: var(--accent);
+  }
+
+  /* ---- PIPELINE DIAGRAM ---- */
+  .pipeline {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    margin: 24px 0;
+    overflow-x: auto;
+  }
+  .pipe-stage {
+    flex: 1;
+    min-width: 160px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 0;
+    padding: 20px 16px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .pipe-stage:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+  .pipe-stage:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
+  .pipe-stage + .pipe-stage { border-left: none; }
+  .pipe-stage.scout { border-top: 2px solid var(--teal); }
+  .pipe-stage.worker { border-top: 2px solid var(--accent); }
+  .pipe-stage.critic { border-top: 2px solid var(--amber); }
+  .pipe-stage.judge { border-top: 2px solid var(--green); }
+  .pipe-arrow {
+    display: flex; align-items: center; justify-content: center;
+    color: var(--faint); font-size: 18px; padding: 0 2px;
+    flex-shrink: 0;
+  }
+  .pipe-icon { font-size: 20px; margin-bottom: 4px; }
+  .pipe-name { font-size: 13px; font-weight: 700; }
+  .pipe-model { font-size: 11px; color: var(--muted); }
+  .pipe-desc { font-size: 12px; color: var(--muted); line-height: 1.4; margin-top: 4px; }
+  .pipe-tokens { font-size: 11px; color: var(--faint); margin-top: auto; padding-top: 8px; border-top: 1px solid var(--border); }
+
+  /* ---- LAYER STACK ---- */
+  .layer-stack { display: flex; flex-direction: column; gap: 8px; margin: 20px 0; }
+  .layer {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 14px 18px;
+  }
+  .layer-icon { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+  .layer-content { flex: 1; }
+  .layer-title { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+  .layer-sub { font-size: 12px; color: var(--muted); }
+  .layer-right { text-align: right; flex-shrink: 0; }
+  .layer-file { font-size: 11px; color: var(--faint); font-family: 'SF Mono', monospace; }
+
+  /* ---- COGNITION GRID ---- */
+  .cog-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 20px 0; }
+  .cog-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+  }
+  .cog-card .cog-icon { font-size: 22px; margin-bottom: 8px; }
+  .cog-card .cog-title { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+  .cog-card .cog-neuro { font-size: 11px; color: var(--accent); margin-bottom: 6px; font-style: italic; }
+  .cog-card .cog-impl { font-size: 12px; color: var(--muted); line-height: 1.45; }
+  .cog-card .cog-file { font-size: 11px; color: var(--faint); font-family: 'SF Mono', monospace; margin-top: 8px; }
+
+  /* ---- INFERENCE CHAIN ---- */
+  .inf-chain { display: flex; flex-direction: column; gap: 0; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin: 20px 0; }
+  .inf-row {
+    display: flex; align-items: center; gap: 16px; padding: 14px 18px;
+    border-bottom: 1px solid var(--border); background: var(--surface);
+  }
+  .inf-row:last-child { border-bottom: none; }
+  .inf-row:hover { background: var(--surface-2); }
+  .inf-priority { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; }
+  .inf-row-content { flex: 1; }
+  .inf-name { font-size: 13px; font-weight: 600; }
+  .inf-desc { font-size: 12px; color: var(--muted); }
+  .inf-status { font-size: 11px; padding: 3px 8px; border-radius: 999px; }
+  .status-active { background: rgba(34,197,94,0.12); color: var(--green); }
+  .status-stub { background: rgba(245,158,11,0.12); color: var(--amber); }
+  .status-flagged { background: rgba(99,102,241,0.12); color: var(--accent); }
+
+  /* ---- DATA FLOW ---- */
+  .flow { display: flex; flex-direction: column; gap: 6px; margin: 20px 0; }
+  .flow-step {
+    display: flex; align-items: flex-start; gap: 14px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 14px 18px;
+  }
+  .flow-num {
+    width: 26px; height: 26px; border-radius: 50%; background: var(--accent-dim);
+    border: 1px solid var(--accent-border); color: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; flex-shrink: 0;
+  }
+  .flow-content { flex: 1; }
+  .flow-title { font-size: 13px; font-weight: 600; margin-bottom: 3px; }
+  .flow-detail { font-size: 12px; color: var(--muted); }
+  .flow-conditional {
+    margin-left: 40px; background: var(--surface-2);
+    border: 1px dashed var(--border); border-radius: 8px; padding: 10px 14px;
+  }
+  .flow-conditional-label { font-size: 11px; color: var(--amber); font-weight: 600; margin-bottom: 3px; }
+  .flow-conditional-text { font-size: 12px; color: var(--muted); }
+
+  /* ---- MODEL BANDS TABLE ---- */
+  table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+  th { text-align: left; padding: 10px 16px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); border-bottom: 1px solid var(--border); }
+  td { padding: 12px 16px; font-size: 13px; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--surface-2); }
+  .band-fast { color: var(--teal); font-weight: 600; }
+  .band-balanced { color: var(--accent); font-weight: 600; }
+  .band-precision { color: var(--purple); font-weight: 600; }
+
+  /* ---- SCREEN MAP ---- */
+  .screen-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 20px 0; }
+  .screen-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px;
+  }
+  .screen-card .screen-name { font-size: 13px; font-weight: 700; margin-bottom: 6px; }
+  .screen-card ul { margin: 0; padding: 0 0 0 14px; }
+  .screen-card li { font-size: 12px; color: var(--muted); margin-bottom: 3px; }
+
+  /* ---- STORAGE ---- */
+  .db-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 20px 0; }
+  .db-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+  .db-table-name { font-size: 12px; font-weight: 700; color: var(--teal); font-family: 'SF Mono', monospace; margin-bottom: 8px; }
+  .db-field { font-size: 12px; color: var(--muted); margin-bottom: 3px; }
+  .db-field span { font-family: 'SF Mono', monospace; font-size: 11px; color: var(--faint); }
+
+  /* ---- PAYMENTS ---- */
+  .pay-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 20px 0; }
+
+  @media (max-width: 700px) {
+    .cog-grid, .screen-grid { grid-template-columns: 1fr; }
+    .pipeline { flex-direction: column; }
+    .pipe-stage { border-radius: var(--radius) !important; border-left: 1px solid var(--border) !important; border-top: 2px solid; }
+    .pipe-arrow { transform: rotate(90deg); }
+  }
+</style>
+</head>
+<body>
+
+<div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+  <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+    <rect width="36" height="36" rx="8" fill="#6366F1"/>
+    <path d="M10 10 L26 10 L26 14 L14 14 L14 18 L24 18 L24 22 L14 22 L14 28 L10 28 Z" fill="white"/>
+    <circle cx="26" cy="22" r="4" fill="#A5B4FC"/>
+  </svg>
+  <div>
+    <h1>Forge IQ</h1>
+    <p class="subtitle">System Architecture — iOS App v1.0</p>
+    <p class="meta">Local-First Multi-Agent AI Operator &nbsp;·&nbsp; React Native + Expo &nbsp;·&nbsp; April 2026</p>
+  </div>
+</div>
+
+<div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:40px;">
+  <span class="tag tag-indigo">iOS 17+ Only</span>
+  <span class="tag tag-green">Local-First</span>
+  <span class="tag tag-purple">4-Band Agent Pipeline</span>
+  <span class="tag tag-teal">6 Neuro Modules</span>
+  <span class="tag tag-amber">MLC LLM Runtime</span>
+  <span class="tag tag-blue">Expo SDK 52</span>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>1 · High-Level Layer Stack</h2>
+<p>Forge IQ is organised into five architectural layers. Each layer has a single responsibility and communicates only with adjacent layers.</p>
+
+<div class="layer-stack">
+  <div class="layer">
+    <div class="layer-icon" style="background:rgba(99,102,241,0.15);">🖼</div>
+    <div class="layer-content">
+      <div class="layer-title">Presentation Layer</div>
+      <div class="layer-sub">Expo Router screens, React Native components, Reanimated animations, Haptics, Lottie. All UI state via Zustand stores.</div>
+    </div>
+    <div class="layer-right"><div class="layer-file">app/ + src/components/</div></div>
+  </div>
+  <div class="layer">
+    <div class="layer-icon" style="background:rgba(20,184,166,0.15);">🧠</div>
+    <div class="layer-content">
+      <div class="layer-title">Cognition Layer</div>
+      <div class="layer-sub">6 cognitive modules: DualProcessRouter, WorkingMemoryBuffer, AttentionGating, SpreadingActivation, MetacognitiveMonitor, Predictive Coding. No LLM calls — pure local logic.</div>
+    </div>
+    <div class="layer-right"><div class="layer-file">src/cognition/</div></div>
+  </div>
+  <div class="layer">
+    <div class="layer-icon" style="background:rgba(168,85,247,0.15);">⚡</div>
+    <div class="layer-content">
+      <div class="layer-title">Agent Orchestration Layer</div>
+      <div class="layer-sub">DeepTaskOrchestrator coordinates 4 agent bands (Scout → Worker → Critic → Judge) via InferenceEngine. RepairLoop fires when Critic score &lt; 0.72.</div>
+    </div>
+    <div class="layer-right"><div class="layer-file">src/agents/</div></div>
+  </div>
+  <div class="layer">
+    <div class="layer-icon" style="background:rgba(59,130,246,0.15);">⚙️</div>
+    <div class="layer-content">
+      <div class="layer-title">Inference Engine Layer</div>
+      <div class="layer-sub">InferenceEngine abstraction with pluggable providers. Priority chain: LocalMLCProvider → MockLocalProvider → CloudBoostProvider (feature-flagged OFF).</div>
+    </div>
+    <div class="layer-right"><div class="layer-file">src/agents/providers/</div></div>
+  </div>
+  <div class="layer">
+    <div class="layer-icon" style="background:rgba(245,158,11,0.15);">💾</div>
+    <div class="layer-content">
+      <div class="layer-title">Persistence Layer</div>
+      <div class="layer-sub">expo-sqlite local DB. 5 tables: sessions, messages, workspace_items, credit_ledger, app_settings. All data on-device by default.</div>
+    </div>
+    <div class="layer-right"><div class="layer-file">src/storage/</div></div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>2 · Agent Pipeline — Deep Task Mode</h2>
+<p>When a user submits a Deep Task, the orchestrator runs all four agent bands in sequence. Each band uses a different model, prompt strategy, and token budget.</p>
+
+<div class="pipeline">
+  <div class="pipe-stage scout">
+    <div class="pipe-icon">🧭</div>
+    <div class="pipe-name">Band 1 · Scout</div>
+    <div class="pipe-model">Qwen2.5-0.5B · Fast</div>
+    <div class="pipe-desc">Parses intent, classifies task type and complexity, extracts key concepts, assigns context relevance scores, predicts output format.</div>
+    <div class="pipe-tokens">Max 512 tokens · ~400ms</div>
+  </div>
+  <div class="pipe-arrow">→</div>
+  <div class="pipe-stage worker">
+    <div class="pipe-icon">🔧</div>
+    <div class="pipe-name">Band 2 · Worker</div>
+    <div class="pipe-model">Qwen2.5-1.5B · User Band</div>
+    <div class="pipe-desc">Receives attention-gated context + spread-activated concepts + memory-pruned history. Generates thorough first-draft response with inline uncertainty markers [?].</div>
+    <div class="pipe-tokens">Up to 2048 tokens · ~900-1800ms</div>
+  </div>
+  <div class="pipe-arrow">→</div>
+  <div class="pipe-stage critic">
+    <div class="pipe-icon">🛡</div>
+    <div class="pipe-name">Band 3 · Critic</div>
+    <div class="pipe-model">Qwen2.5-0.5B · Fast</div>
+    <div class="pipe-desc">Adversarially scores Worker output on 5 dimensions (0.0–1.0). Issues precise issue list. Returns verdict: pass / repair_needed / fail. If repair_needed → triggers RepairLoop.</div>
+    <div class="pipe-tokens">Max 512 tokens · ~400ms</div>
+  </div>
+  <div class="pipe-arrow">→</div>
+  <div class="pipe-stage judge">
+    <div class="pipe-icon">⚖️</div>
+    <div class="pipe-name">Band 4 · Judge</div>
+    <div class="pipe-model">Qwen2.5-1.5B · Balanced</div>
+    <div class="pipe-desc">Synthesises best elements from all Worker passes incorporating Critic corrections. Appends structured &lt;confidence&gt; tag. Produces final user-facing response.</div>
+    <div class="pipe-tokens">Up to 1024 tokens · ~900ms</div>
+  </div>
+</div>
+
+<div class="flow-conditional" style="margin: 0 0 24px 0; border-radius: var(--radius);">
+  <div class="flow-conditional-label">⚠ REPAIR LOOP — fires when Critic aggregate score &lt; 0.72</div>
+  <div class="flow-conditional-text">Worker runs a second pass with Critic's repair_guidance prepended as an additional instruction. Judge receives both passes and synthesises the superior result. Repair loop fires at most once per Deep Task.</div>
+</div>
+
+<h3>Critic Scoring Rubric</h3>
+<table>
+  <thead><tr><th>Dimension</th><th>What it checks</th><th>Pass threshold</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Correctness</strong></td><td>Factual accuracy, no hallucinations, no unsupported assertions</td><td>≥ 0.70</td></tr>
+    <tr><td><strong>Completeness</strong></td><td>All parts of the task addressed, no gaps</td><td>≥ 0.70</td></tr>
+    <tr><td><strong>Consistency</strong></td><td>No internal contradictions</td><td>≥ 0.70</td></tr>
+    <tr><td><strong>Usefulness</strong></td><td>Genuinely helps the user accomplish their goal</td><td>≥ 0.70</td></tr>
+    <tr><td><strong>Safety</strong></td><td>Free of harmful, misleading, or inappropriate content</td><td>≥ 0.70</td></tr>
+  </tbody>
+</table>
+
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>3 · Cognitive Neuroscience Modules</h2>
+<p>Each module maps directly to a validated neuroscience model. These run locally without LLM calls — they are the intelligence layer <em>around</em> the models.</p>
+
+<div class="cog-grid">
+  <div class="cog-card">
+    <div class="cog-icon">⚡ / 🧩</div>
+    <div class="cog-title">Dual-Process Router</div>
+    <div class="cog-neuro">Kahneman System 1 / System 2</div>
+    <div class="cog-impl">Ask tab → System 1: Scout + Worker only (fast, heuristic). Deep Task → System 2: full 4-band pipeline (slow, deliberate). Router reads Scout complexity signal.</div>
+    <div class="cog-file">DualProcessRouter.ts</div>
+  </div>
+  <div class="cog-card">
+    <div class="cog-icon">📦</div>
+    <div class="cog-title">Working Memory Buffer</div>
+    <div class="cog-neuro">Baddeley's Working Memory Model</div>
+    <div class="cog-impl">Sliding context window per session. Scores and prunes prior messages and context for relevance before each agent pass. Capacity limits: Fast=512, Balanced=1024, Precision=2048 tokens.</div>
+    <div class="cog-file">WorkingMemoryBuffer.ts</div>
+  </div>
+  <div class="cog-card">
+    <div class="cog-icon">🕸</div>
+    <div class="cog-title">Spreading Activation</div>
+    <div class="cog-neuro">Collins & Loftus Semantic Network</div>
+    <div class="cog-impl">Expands user input into broader semantic concept set using an embedded local vocabulary map (no LLM call). Activated concepts prepended to Worker context to improve depth and coverage.</div>
+    <div class="cog-file">SpreadingActivation.ts</div>
+  </div>
+  <div class="cog-card">
+    <div class="cog-icon">🎯</div>
+    <div class="cog-title">Attention Gating</div>
+    <div class="cog-neuro">Selective Attention / Treisman's Filter</div>
+    <div class="cog-impl">Scores all available context fragments using TF-IDF keyword overlap + Scout's relevance map. Top-K fragments selected (K varies by band: 3/5/8). Non-relevant context discarded before Worker pass.</div>
+    <div class="cog-file">AttentionGating.ts</div>
+  </div>
+  <div class="cog-card">
+    <div class="cog-icon">📊</div>
+    <div class="cog-title">Metacognitive Monitor</div>
+    <div class="cog-neuro">Flavell's Metacognition Model</div>
+    <div class="cog-impl">Tracks Critic scorecard values across agent stages. If aggregate confidence &lt; 0.72, triggers RepairLoop. Feeds ConfidenceMeter UI component with real scores. Mirrors self-monitoring of cognitive performance.</div>
+    <div class="cog-file">MetacognitiveMonitor.ts</div>
+  </div>
+  <div class="cog-card">
+    <div class="cog-icon">🔮</div>
+    <div class="cog-title">Predictive Coding UI</div>
+    <div class="cog-neuro">Friston's Predictive Processing</div>
+    <div class="cog-impl">Scout's output_format + task_type generate a natural-language prediction label shown to user while Worker runs (e.g., "Generating a structured project plan..."). Sets expectations before output arrives. Reduces perceived latency.</div>
+    <div class="cog-file">UI layer (task.tsx)</div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>4 · Inference Engine & Provider Chain</h2>
+<p>All LLM calls go through <code>InferenceEngine</code>. It tries each provider in priority order until one is available. This isolates the rest of the app from the underlying runtime.</p>
+
+<div class="inf-chain">
+  <div class="inf-row">
+    <div class="inf-priority" style="background:rgba(34,197,94,0.15); color:var(--green);">1</div>
+    <div class="inf-row-content">
+      <div class="inf-name">LocalMLCProvider</div>
+      <div class="inf-desc">Bridges to MLC LLM iOS framework via expo-modules-core native module. Runs Qwen2.5 quantised models on iPhone GPU/ANE. Zero network calls. Post-MVP native wiring.</div>
+    </div>
+    <span class="inf-status status-stub">Stub — Post MVP</span>
+  </div>
+  <div class="inf-row">
+    <div class="inf-priority" style="background:rgba(99,102,241,0.15); color:var(--accent);">2</div>
+    <div class="inf-row-content">
+      <div class="inf-name">MockLocalProvider</div>
+      <div class="inf-desc">Always available. Simulates per-band latency (400ms–2200ms). Streams tokens via onToken callback. Returns contextually appropriate mock responses for all 4 agent types. Full UI works end-to-end.</div>
+    </div>
+    <span class="inf-status status-active">Active — MVP</span>
+  </div>
+  <div class="inf-row">
+    <div class="inf-priority" style="background:rgba(245,158,11,0.15); color:var(--amber);">3</div>
+    <div class="inf-row-content">
+      <div class="inf-name">CloudBoostProvider</div>
+      <div class="inf-desc">Optional relay to remote high-parameter models for long-document processing. Only activates if CLOUD_BOOST_ENABLED = true AND user has explicitly consented. Off by default.</div>
+    </div>
+    <span class="inf-status status-flagged">Feature-Flagged OFF</span>
+  </div>
+</div>
+
+<h3>Model Bands</h3>
+<table>
+  <thead><tr><th>Band</th><th>Model</th><th>Quantisation</th><th>Max Tokens</th><th>Temp</th><th>Latency</th><th>Used by</th><th>Requires</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><span class="band-fast">Fast</span></td>
+      <td>Qwen2.5-0.5B-Instruct</td>
+      <td>q4f16_1</td>
+      <td>512</td>
+      <td>0.7</td>
+      <td>~400ms</td>
+      <td>Scout, Critic, Ask-tab default</td>
+      <td>Free</td>
+    </tr>
+    <tr>
+      <td><span class="band-balanced">Balanced</span></td>
+      <td>Qwen2.5-1.5B-Instruct</td>
+      <td>q4f16_1</td>
+      <td>1024</td>
+      <td>0.6</td>
+      <td>~900ms</td>
+      <td>Worker (default), Judge</td>
+      <td>Free</td>
+    </tr>
+    <tr>
+      <td><span class="band-precision">Precision</span></td>
+      <td>Qwen2.5-1.5B-Instruct</td>
+      <td>q8_0</td>
+      <td>2048</td>
+      <td>0.4</td>
+      <td>~1800ms</td>
+      <td>Worker (max depth)</td>
+      <td>Pro</td>
+    </tr>
+  </tbody>
+</table>
+
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>5 · Deep Task Orchestration Flow</h2>
+<p>The <code>DeepTaskOrchestrator</code> emits events at each stage so the UI can update in real-time without polling.</p>
+
+<div class="flow">
+  <div class="flow-step">
+    <div class="flow-num">1</div>
+    <div class="flow-content">
+      <div class="flow-title">Scout Pass</div>
+      <div class="flow-detail">ScoutAgent runs on Fast band. Extracts task_type, complexity, key_concepts, output_format, predicted_output_label, context_relevance map. Emits <code>scout_complete</code>. If complexity = low and route = System 1, skip to Step 4.</div>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-num">2</div>
+    <div class="flow-content">
+      <div class="flow-title">Attention Gating + Spreading Activation (parallel, synchronous)</div>
+      <div class="flow-detail">AttentionGating scores all context fragments using Scout's relevance map + TF-IDF overlap. Selects top-K. SpreadingActivation expands key_concepts to broader semantic set. Both run in &lt;50ms, no LLM. Emits <code>context_prepared</code>.</div>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-num">3</div>
+    <div class="flow-content">
+      <div class="flow-title">Working Memory Buffer</div>
+      <div class="flow-detail">Prunes enriched context to band token capacity. Priority order for pruning: oldest messages first → lowest relevance context → activated concepts. Emits <code>memory_ready</code>.</div>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-num">4</div>
+    <div class="flow-content">
+      <div class="flow-title">Worker Pass</div>
+      <div class="flow-detail">WorkerAgent runs on user-selected band with enriched, gated, memory-limited context. Streams tokens to UI via onToken callback. Emits <code>worker_complete</code>.</div>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-num">5</div>
+    <div class="flow-content">
+      <div class="flow-title">Critic Pass</div>
+      <div class="flow-detail">CriticAgent scores Worker output on 5 dimensions. MetacognitiveMonitor records scores. Emits <code>critic_complete</code> with full scorecard JSON.</div>
+    </div>
+  </div>
+</div>
+
+<div class="flow-conditional">
+  <div class="flow-conditional-label">⚠ CONDITIONAL — Repair Loop (verdict = "repair_needed")</div>
+  <div class="flow-conditional-text">Worker runs second pass with Critic's repair_guidance appended. Emits <code>repair_triggered</code> then <code>repair_complete</code>. If verdict = "fail" → pipeline aborts, user sees error message.</div>
+</div>
+
+<div class="flow" style="margin-top:6px;">
+  <div class="flow-step">
+    <div class="flow-num">6</div>
+    <div class="flow-content">
+      <div class="flow-title">Judge Pass</div>
+      <div class="flow-detail">JudgeAgent synthesises best elements from all Worker passes + Critic corrections. Parses &lt;confidence&gt; XML tag, strips it from user-visible response, passes scores to ConfidenceMeter. Emits <code>judge_complete</code>.</div>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-num">7</div>
+    <div class="flow-content">
+      <div class="flow-title">Persistence</div>
+      <div class="flow-detail">Full session saved to SQLite: all messages, all agent stage outputs with agent_stage field, confidence scores. Session appears immediately in Workspace → Recent Sessions. Emits <code>pipeline_complete</code>.</div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>6 · Screen Architecture</h2>
+<p>All screens use Expo Router file-based routing. The onboarding gate is controlled by <code>onboarding_complete</code> in AsyncStorage, checked in the root <code>_layout.tsx</code>.</p>
+
+<div class="screen-grid">
+  <div class="screen-card">
+    <div class="screen-name">🚪 Onboarding (4 screens)</div>
+    <ul>
+      <li>Welcome — animated gradient + CTA</li>
+      <li>Privacy Promise — 3-row feature list</li>
+      <li>Model Band Select — tappable cards</li>
+      <li>Ready — Lottie checkmark</li>
+    </ul>
+  </div>
+  <div class="screen-card">
+    <div class="screen-name">💬 Ask Tab</div>
+    <ul>
+      <li>Chat interface with FlatList</li>
+      <li>Streaming text (Reanimated)</li>
+      <li>Markdown rendering</li>
+      <li>LocalBadge + band selector</li>
+      <li>ImportSheet (attach files)</li>
+    </ul>
+  </div>
+  <div class="screen-card">
+    <div class="screen-name">⚡ Deep Task Tab</div>
+    <ul>
+      <li>Task input (multiline, 1000 chars)</li>
+      <li>Pipeline progress (4 AgentStageCards)</li>
+      <li>Scorecard per Critic stage</li>
+      <li>ConfidenceMeter on result</li>
+      <li>Export / Share / Pin actions</li>
+    </ul>
+  </div>
+  <div class="screen-card">
+    <div class="screen-name">📁 Workspace Tab</div>
+    <ul>
+      <li>Pinned Outputs (horizontal scroll)</li>
+      <li>Imported Files list</li>
+      <li>Recent Sessions (swipe to delete)</li>
+      <li>Full session replay view</li>
+    </ul>
+  </div>
+  <div class="screen-card">
+    <div class="screen-name">⚙️ Settings</div>
+    <ul>
+      <li>Privacy toggles (all default OFF)</li>
+      <li>Model Band selector</li>
+      <li>Export / Delete all data</li>
+      <li>Subscription management</li>
+      <li>Credit balance + top-up</li>
+    </ul>
+  </div>
+  <div class="screen-card">
+    <div class="screen-name">💎 Paywall</div>
+    <ul>
+      <li>Plus & Pro plan cards</li>
+      <li>Monthly / annual toggle</li>
+      <li>3 credit pack options</li>
+      <li>StoreKit purchase flow</li>
+      <li>Restore Purchases link</li>
+    </ul>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>7 · Data Persistence (SQLite)</h2>
+<p>All data lives in a single <code>expo-sqlite</code> database at app launch. No cloud sync. Users can export all data as JSON or delete all data with one tap.</p>
+
+<div class="db-grid">
+  <div class="db-card">
+    <div class="db-table-name">sessions</div>
+    <div class="db-field">id <span>TEXT PK</span></div>
+    <div class="db-field">type <span>TEXT — 'ask' | 'deep_task'</span></div>
+    <div class="db-field">created_at / updated_at <span>INTEGER</span></div>
+    <div class="db-field">title <span>TEXT nullable</span></div>
+    <div class="db-field">pinned <span>INTEGER 0/1</span></div>
+    <div class="db-field">model_band <span>TEXT</span></div>
+    <div class="db-field">metadata <span>TEXT (JSON blob)</span></div>
+  </div>
+  <div class="db-card">
+    <div class="db-table-name">messages</div>
+    <div class="db-field">id <span>TEXT PK</span></div>
+    <div class="db-field">session_id <span>TEXT FK → sessions</span></div>
+    <div class="db-field">role <span>TEXT — user | assistant | system</span></div>
+    <div class="db-field">content <span>TEXT</span></div>
+    <div class="db-field">agent_stage <span>TEXT — scout | worker | critic | judge | repair</span></div>
+    <div class="db-field">confidence_score <span>REAL 0.0–1.0</span></div>
+    <div class="db-field">token_count <span>INTEGER</span></div>
+  </div>
+  <div class="db-card">
+    <div class="db-table-name">workspace_items</div>
+    <div class="db-field">id <span>TEXT PK</span></div>
+    <div class="db-field">type <span>TEXT — file | note | pinned_output</span></div>
+    <div class="db-field">title / content <span>TEXT</span></div>
+    <div class="db-field">tags <span>TEXT (JSON array)</span></div>
+    <div class="db-field">created_at <span>INTEGER</span></div>
+    <div class="db-field">source_session_id <span>TEXT nullable</span></div>
+  </div>
+  <div class="db-card">
+    <div class="db-table-name">credit_ledger</div>
+    <div class="db-field">id <span>TEXT PK</span></div>
+    <div class="db-field">amount_pence <span>INTEGER</span></div>
+    <div class="db-field">direction <span>TEXT — credit | debit</span></div>
+    <div class="db-field">reason <span>TEXT</span></div>
+    <div class="db-field">created_at <span>INTEGER</span></div>
+    <br>
+    <div class="db-table-name">app_settings</div>
+    <div class="db-field">key / value <span>TEXT key-value store</span></div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>8 · Payments & Entitlements</h2>
+<p>Monetisation uses StoreKit 2 via <code>react-native-iap</code>. The <code>EntitlementManager</code> is the single source of truth for what a user can access.</p>
+
+<div class="pay-grid">
+  <div class="card">
+    <h3>Subscriptions (auto-renewable)</h3>
+    <div style="margin-top:10px;">
+      <div style="margin-bottom:8px;"><code>com.forgeiq.plus.monthly</code> — £7.99/mo</div>
+      <div style="margin-bottom:8px;"><code>com.forgeiq.plus.annual</code> — £63.92/yr</div>
+      <div style="margin-bottom:8px;"><code>com.forgeiq.pro.monthly</code> — £19.99/mo</div>
+      <div><code>com.forgeiq.pro.annual</code> — £159.92/yr</div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Consumable IAPs (cloud boost only)</h3>
+    <div style="margin-top:10px;">
+      <div style="margin-bottom:8px;"><code>com.forgeiq.credits.small</code> — £2.99</div>
+      <div style="margin-bottom:8px;"><code>com.forgeiq.credits.medium</code> — £7.99</div>
+      <div><code>com.forgeiq.credits.large</code> — £14.99</div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Entitlement Gates</h3>
+    <div style="margin-top:10px; font-size:12px; color:var(--muted); line-height:1.7;">
+      Free: Ask (unlimited), Deep Task (3/day), Fast band only<br>
+      Plus: All above unlimited + Balanced band + Advanced export<br>
+      Pro: All above + Precision band + Workspace packs<br>
+      Credits: Only for optional CloudBoost tasks (feature-flagged OFF v1)
+    </div>
+  </div>
+  <div class="card">
+    <h3>EntitlementManager API</h3>
+    <div style="margin-top:10px; font-size:12px; line-height:1.9;">
+      <code>getCurrentPlan()</code><br>
+      <code>getCreditBalance()</code><br>
+      <code>isFeatureUnlocked(feature)</code><br>
+      <code>purchaseSubscription(id)</code><br>
+      <code>restorePurchases()</code>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>9 · Privacy Architecture</h2>
+
+<div class="card-grid">
+  <div class="card">
+    <h3>Data on Device</h3>
+    <p style="margin-top:8px;">All conversations, agent outputs, workspace files, session history stored in local SQLite only. No cloud sync by default.</p>
+  </div>
+  <div class="card">
+    <h3>Inference on Device</h3>
+    <p style="margin-top:8px;">MLC LLM runs Qwen2.5 models locally via Metal/ANE. No tokens leave the device unless CloudBoostProvider is explicitly enabled by user.</p>
+  </div>
+  <div class="card">
+    <h3>Zero Required Permissions</h3>
+    <p style="margin-top:8px;">No permissions requested at launch. Files & Folders requested only on first import. No microphone, no camera, no location, no contacts in v1.</p>
+  </div>
+  <div class="card">
+    <h3>Analytics Default OFF</h3>
+    <p style="margin-top:8px;">Analytics and crash reporting toggles both default to OFF. User must explicitly enable in Settings. No data linked to user identity.</p>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>10 · Tech Stack Summary</h2>
+
+<table>
+  <thead><tr><th>Layer</th><th>Technology</th><th>Version</th></tr></thead>
+  <tbody>
+    <tr><td>App shell</td><td>React Native</td><td>0.76.7</td></tr>
+    <tr><td>Navigation</td><td>Expo Router</td><td>~4.0.0</td></tr>
+    <tr><td>Build & submit</td><td>EAS Build + Submit</td><td>Latest</td></tr>
+    <tr><td>Animations</td><td>react-native-reanimated</td><td>~3.16.0</td></tr>
+    <tr><td>Local DB</td><td>expo-sqlite</td><td>~15.0.0</td></tr>
+    <tr><td>State</td><td>Zustand</td><td>^5.0.0</td></tr>
+    <tr><td>Payments</td><td>react-native-iap</td><td>^12.15.0</td></tr>
+    <tr><td>Markdown</td><td>react-native-markdown-display</td><td>^7.0.0</td></tr>
+    <tr><td>Haptics</td><td>expo-haptics</td><td>~14.0.0</td></tr>
+    <tr><td>Lottie</td><td>lottie-react-native</td><td>~7.1.0</td></tr>
+    <tr><td>Icons</td><td>@expo/vector-icons (Feather + Ionicons)</td><td>^14.0.0</td></tr>
+    <tr><td>LLM Runtime (post-MVP)</td><td>MLC LLM iOS via expo-modules-core</td><td>Post-MVP</td></tr>
+    <tr><td>Models</td><td>Qwen2.5-0.5B + Qwen2.5-1.5B (q4f16_1, q8_0)</td><td>Open source</td></tr>
+  </tbody>
+</table>
+
+<div style="margin-top:48px; padding:20px 24px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); color:var(--muted); font-size:12px;">
+  Forge IQ Architecture Document — v1.0 · April 2026 · Confidential<br>
+  Built for iOS 17+ (iPhone only) using React Native + Expo SDK 52 · Deployable via Replit + EAS Build
+</div>
+
+</body>
+</html>

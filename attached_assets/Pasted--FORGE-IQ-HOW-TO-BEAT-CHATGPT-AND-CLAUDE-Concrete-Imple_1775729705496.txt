@@ -1,0 +1,443 @@
+# FORGE IQ — HOW TO BEAT CHATGPT AND CLAUDE
+## Concrete Implementation Roadmap
+### April 2026
+
+***
+
+## THE HONEST ANSWER FIRST
+
+You cannot beat ChatGPT-4o or Claude Sonnet at general intelligence with a 1.5B parameter model.
+They have 100x the parameters and trillions of tokens of training.
+
+BUT — you can beat them on what actually matters to your users:
+
+1. RELIABILITY OF STRUCTURED TASKS — adversarial multi-agent beats single-pass every time on measurable tasks
+2. PRIVATE SENSITIVE WORK — the only AI that never leaves the device
+3. DOMAIN-SPECIFIC DEPTH — prompts tuned for real verticals (strategy, security, research, coding)
+4. CONSISTENCY — same pipeline every time, not "sometimes great, sometimes hallucinating"
+5. TRANSPARENCY — users see every stage and confidence score; ChatGPT is a black box
+6. MEMORY — Forge IQ knows your prior work; ChatGPT forgets after every session
+
+These are the 5 axes where you can be definitively better, not "better overall" which is unwinnable.
+
+***
+
+# IMPROVEMENT 1: WIRE IN REAL MODELS (DO THIS TODAY)
+
+## The Problem
+The mock provider is generating fake "domain-aware" text.
+The pipeline logic is real, but the intelligence inside it isn't.
+Nothing else on this list matters until you fix this.
+
+## Two Paths — Do BOTH, in order:
+
+***
+
+### PATH A: Groq API as Temporary Cloud Boost (1-2 days to implement)
+
+Groq runs Qwen3 32B at 662 tokens/second at $0.29/M input tokens.
+That is approximately £0.0000002 per token — for context, 1,000 deep tasks cost under £0.30.
+This is cheap enough that it can be your default until local inference is wired.
+
+Set CLOUD_BOOST_ENABLED = true in feature flags (temporarily).
+Wire GroqProvider as the primary provider in InferenceEngine.
+Use Qwen3-32B for Worker and Judge.
+Use Qwen3-8B (even faster) for Scout and Critic.
+
+// src/agents/providers/GroqProvider.ts
+
+import { InferenceProvider, InferenceRequest, InferenceResponse } from "../InferenceEngine";
+
+const GROQ_API_KEY = process.env.EXPO_PUBLIC_GROQ_API_KEY;
+const GROQ_BASE_URL = "https://api.groq.com/openai/v1";
+
+const MODEL_MAP = {
+  fast: "qwen-qwen3-8b",       // Scout and Critic
+  balanced: "qwen3-32b",        // Worker default, Judge
+  precision: "qwen3-32b",       // Worker precision (higher temp)
+};
+
+export class GroqProvider implements InferenceProvider {
+  providerType = "cloud-boost" as const;
+
+  async isAvailable(): Promise<boolean> {
+    return !!GROQ_API_KEY;
+  }
+
+  async generate(request: InferenceRequest): Promise<InferenceResponse> {
+    const model = MODEL_MAP[request.modelBand];
+    const start = Date.now();
+
+    const response = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${GROQ_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: request.systemPrompt },
+          { role: "user", content: request.prompt }
+        ],
+        max_tokens: request.maxTokens,
+        temperature: request.temperature,
+        stream: request.stream,
+      }),
+    });
+
+    if (request.stream) {
+      const reader = response.body?.getReader();
+      let fullText = "";
+      // ... SSE streaming implementation
+      return { text: fullText, tokensUsed: 0, latencyMs: Date.now() - start, provider: "cloud-boost", modelId: model, bandUsed: request.modelBand };
+    }
+
+    const data = await response.json();
+    return {
+      text: data.choices.message.content,
+      tokensUsed: data.usage.total_tokens,
+      latencyMs: Date.now() - start,
+      provider: "cloud-boost",
+      modelId: model,
+      bandUsed: request.modelBand,
+    };
+  }
+
+  async loadModel() {}
+  async unloadModel() {}
+  getModelInfo() { return { id: "qwen3-32b", name: "Qwen3 32B (Groq)", parameterCount: "32B", quantization: "none", contextWindow: 131072, estimatedSizeGB: 0, isDownloaded: true }; }
+}
+
+***
+
+### PATH B: Real On-Device MLC LLM (1-2 weeks, do after Path A)
+
+The package exists. This is not theoretical.
+
+npm install @react-native-ai/mlc
+
+// src/agents/providers/LocalMLCProvider.ts (REAL IMPLEMENTATION)
+import { createMLCEngine } from "@react-native-ai/mlc";
+
+// Models to download on first launch:
+// Qwen2.5-0.5B-Instruct-q4f16_1-MLC  (~350MB)
+// Qwen2.5-1.5B-Instruct-q4f16_1-MLC  (~900MB)
+
+const engine = createMLCEngine({
+  modelId: "Qwen2.5-1.5B-Instruct-q4f16_1-MLC",
+  initProgressCallback: (progress) => {
+    // Update download progress UI
+  },
+});
+
+// Then generate() just calls engine.chat.completions.create({...})
+
+NOTE: Users need to download models on first launch.
+Build a download screen: show model size, progress bar, "Download once, runs forever offline" copy.
+Store models in app Documents directory.
+Fast band model: ~350MB. Balanced band: ~900MB.
+
+***
+
+# IMPROVEMENT 2: THINK@N MULTI-SAMPLING (The Secret Weapon)
+
+## Why this works
+New Google/MIT research (2026) shows that longer chain-of-thought does NOT correlate with accuracy.
+The correlation between token length and accuracy is actually NEGATIVE (-0.54).
+
+BUT — sampling MULTIPLE reasoning paths and selecting the best one achieves ~20% higher accuracy
+compared to extended single-path thinking, at approximately HALF the compute cost.
+
+## Implementation: Parallel Worker Sampling
+
+Instead of: [Scout] → [Worker] → [Critic] → [Judge]
+
+Do this:  [Scout] → [Worker x3 parallel] → [Selector] → [Critic] → [Judge]
+
+The Selector evaluates the first 50 tokens of each Worker response using the
+Deep-Thinking Ratio (DTR) heuristic — how much the model "committed" to its reasoning early.
+
+// src/agents/orchestrator/ThinkAtN.ts
+
+export interface WorkerSample {
+  text: string;
+  firstFiftyTokens: string;
+  dtrScore: number;  // 0.0-1.0, higher = more confident early commitment
+}
+
+export async function runThinkAtN(
+  prompt: string,
+  systemPrompt: string,
+  engine: InferenceEngine,
+  n: number = 3
+): Promise<string> {
+  // Run N Worker passes in parallel
+  const samples: WorkerSample[] = await Promise.all(
+    Array(n).fill(null).map(async () => {
+      const result = await engine.generate({
+        prompt, systemPrompt,
+        maxTokens: 1024, temperature: 0.7,
+        modelBand: "balanced", stream: false
+      });
+      return { text: result.text, firstFiftyTokens: result.text.slice(0, 200), dtrScore: 0 };
+    })
+  );
+
+  // Evaluate DTR: score based on structural commitment in first ~50 tokens
+  // Heuristic: does the model immediately start with a concrete structure (list, step 1, etc.)
+  // vs vague hedging ("That's a great question", "There are many ways", "It depends")
+  const HEDGE_PHRASES = ["it depends", "there are many", "that's a great", "could be", "might be", "various", "several factors"];
+  const COMMIT_PHRASES = ["first,", "1.", "step 1", "the key", "specifically", "to answer this", "the solution is", "here is"];
+
+  const scoredSamples = samples.map(s => ({
+    ...s,
+    dtrScore: scoreDTR(s.firstFiftyTokens, HEDGE_PHRASES, COMMIT_PHRASES)
+  }));
+
+  // Keep top 50% (top 2 of 3, or top 1 of 2)
+  const topSamples = scoredSamples
+    .sort((a, b) => b.dtrScore - a.dtrScore)
+    .slice(0, Math.ceil(n / 2));
+
+  // Return highest-DTR sample (or combine if only 1 sample left)
+  return topSamples.text;
+}
+
+function scoreDTR(text: string, hedges: string[], commits: string[]): number {
+  const lower = text.toLowerCase();
+  const hedgeCount = hedges.filter(h => lower.includes(h)).length;
+  const commitCount = commits.filter(c => lower.includes(c)).length;
+  return Math.min(1.0, (commitCount * 0.25) - (hedgeCount * 0.15) + 0.5);
+}
+
+USE IN ORCHESTRATOR:
+- On Fast band: skip (n=1, single pass, latency is primary concern)
+- On Balanced band: n=2 (sample 2, keep best 1)
+- On Precision band: n=3 (sample 3, keep best 2, Judge sees both)
+- With Groq at 662 TPS, 3 parallel Worker passes complete in ~2 seconds
+
+***
+
+# IMPROVEMENT 3: DOMAIN-SPECIFIC WORKER PROMPTS
+
+## Why this beats ChatGPT
+ChatGPT uses one general system prompt. Forge IQ can use Scout to route to a different,
+highly-tuned Worker persona for each domain. This is a genuine quality multiplier.
+
+Scout already classifies task_type. Extend it to classify domain:
+
+Scout domains to add:
+- "strategy_consulting" — outputs: structured frameworks (SWOT, Porter's Five, etc.)
+- "cybersecurity" — outputs: threat models, mitigation tables, CVE analysis
+- "research_synthesis" — outputs: evidence summaries with citation structure
+- "financial_analysis" — outputs: structured models, assumptions, scenarios
+- "software_engineering" — outputs: working code, test cases, architecture diagrams
+- "academic_writing" — outputs: thesis-statement structure, argument chains
+- "legal_analysis" — outputs: structured risk analysis, statute references
+- "product_strategy" — outputs: PRD-style structure, user story format
+
+// src/agents/prompts/worker.prompts.ts — domain-specific Worker prompts
+
+export const WORKER_PROMPTS: Record<string, string> = {
+
+  strategy_consulting: `You are a senior strategy consultant from McKinsey with 20 years of experience.
+When answering, you:
+- Open with a clear thesis/recommendation (the "so what" first)
+- Structure the response using a recognised framework where appropriate (MECE, SWOT, BCG Matrix, etc.)
+- Use "Situation / Complication / Resolution" narrative structure for problem framing
+- End with 3 concrete next actions
+- Never give vague advice; always be specific and actionable
+- Use numbered lists for recommendations, bullet lists for supporting evidence
+Format: Structured business memo style.`,
+
+  cybersecurity: `You are a CISO-level security architect with expertise in threat modelling, 
+incident response, and enterprise security strategy.
+When answering, you:
+- Lead with the highest-impact risk or recommendation
+- Structure threat analysis as: Threat Vector → Likelihood → Impact → Mitigation
+- Use MITRE ATT&CK framework references where relevant
+- Separate tactical (immediate) from strategic (long-term) recommendations
+- Always consider regulatory implications (GDPR, NIS2, ISO 27001, etc.)
+- Flag any assumptions you are making about the environment
+Format: Security advisory format with clear severity indicators.`,
+
+  research_synthesis: `You are a research analyst trained in systematic review methodology.
+When answering, you:
+- Clearly state the central question and scope
+- Synthesise evidence into themes, not just list sources
+- Explicitly note where evidence is strong vs. weak or contested
+- Flag [?] on claims you cannot fully verify
+- End with a gap analysis: what remains unknown
+- Use academic-quality argumentation with clear evidence chains
+Format: Research brief format with evidence strength indicators.`,
+
+  financial_analysis: `You are a senior financial analyst with CFA-level expertise.
+When answering, you:
+- State key assumptions explicitly before any analysis
+- Structure financial arguments as: Current State → Key Drivers → Scenarios
+- Distinguish between revenue, cost, and capital questions
+- Flag key risks and sensitivities
+- Avoid spurious precision — use ranges not point estimates where uncertainty is high
+- Include a "bear / base / bull" scenario view where relevant
+Format: Financial memo with scenario table.`,
+
+  software_engineering: `You are a senior software architect with 15 years of production experience.
+When answering, you:
+- Provide working, runnable code — not pseudo-code
+- Follow the language's idiomatic best practices
+- Add brief inline comments only where the logic is non-obvious
+- Include error handling
+- Note any performance or security considerations
+- If the question is architectural, use a simple ASCII diagram before the code
+Format: Working code first, then explanation.`,
+
+  default: `You are an expert research assistant with broad knowledge across domains.
+When answering, you:
+- Be specific and concrete. Avoid vague generalities.
+- Use evidence and logical structure.
+- Stay within the requested output format.
+- Flag uncertain claims with [?] inline.
+- Do not pad with filler. Every sentence should contribute.
+Format: Match the output format (prose/list/plan/code/table) requested by the task.`,
+};
+
+***
+
+# IMPROVEMENT 4: PERSISTENT PERSONAL MEMORY
+
+## Why this beats ChatGPT
+ChatGPT resets every session. Memory in ChatGPT+ is shallow and keyword-based.
+Forge IQ can build a proper long-term user model that makes every response better over time.
+
+## Two-layer memory architecture:
+
+### Layer 1 — Session Context (already built)
+The WorkingMemoryBuffer + AttentionGating already handles within-session context.
+
+### Layer 2 — Long-Term User Memory (new module)
+// src/cognition/LongTermMemory.ts
+
+interface MemoryEntry {
+  id: string;
+  content: string;
+  type: "preference" | "expertise" | "project" | "constraint" | "style";
+  domain: string;
+  importance: number;  // 0.0-1.0
+  lastAccessed: number;
+  accessCount: number;
+}
+
+export class LongTermMemory {
+
+  // Extract and store memories from successful Deep Task sessions
+  async extractMemories(sessionId: string, judgeOutput: string, taskType: string): Promise<void> {
+    // After every successful Deep Task, extract:
+    // - User preferences revealed in the task ("user prefers Python over Java")
+    // - Domain expertise signals ("user works in cybersecurity")
+    // - Project context ("user is building an iOS app called Forge IQ")
+    // - Constraint signals ("user is on a budget", "user is in London")
+    // Store in SQLite user_memories table
+  }
+
+  // Retrieve relevant memories before Worker pass
+  async getRelevantMemories(taskInput: string, domain: string, k: number = 5): Promise<MemoryEntry[]> {
+    // TF-IDF overlap between taskInput and stored memory content
+    // Return top-k most relevant memories
+    // These get prepended to Worker context as a "User Profile" block
+  }
+
+  // User can view, edit, and delete their memories in Settings
+  async getAllMemories(): Promise<MemoryEntry[]> {}
+  async deleteMemory(id: string): Promise<void> {}
+}
+
+// HOW THIS IMPROVES QUALITY:
+// Before Worker pass, prepend:
+// "User Profile (from previous sessions):
+//  - Works in cybersecurity and CISO strategy
+//  - Based in London, UK
+//  - Prefers concise, structured responses with frameworks
+//  - Currently building an iOS app (Forge IQ)
+//  - Has PhD background in mathematics"
+//
+// The Worker now generates responses tailored to THIS user, not a generic user.
+// ChatGPT cannot do this without manual copy-pasting each session.
+
+New SQLite table:
+CREATE TABLE user_memories (
+  id TEXT PRIMARY KEY,
+  content TEXT NOT NULL,
+  type TEXT NOT NULL,
+  domain TEXT,
+  importance REAL DEFAULT 0.5,
+  created_at INTEGER NOT NULL,
+  last_accessed INTEGER,
+  access_count INTEGER DEFAULT 0
+);
+
+***
+
+# IMPROVEMENT 5: THE CRITIC NEEDS REAL ADVERSARIAL DEPTH
+
+## The Problem With the Current Critic
+The current Critic scores on 5 dimensions — which is good.
+But it runs with the SAME model type and temperature as the Worker.
+A genuinely adversarial critic needs a different "personality" from the Worker.
+
+## Fix: Steel-Man Adversarial Critic
+
+// Critic system prompt — REPLACE the current one with this:
+
+CRITIC_PROMPT_V2 = `You are Devil's Advocate Critic, a ruthlessly adversarial reviewer.
+Your job is NOT to be fair or balanced. Your job is to find every possible flaw.
+
+You have three roles to play:
+1. THE SKEPTIC — challenge every factual claim. What evidence supports this? What contradicts it?
+2. THE EDGE CASE HUNTER — find the scenario where this answer fails. What about the exception? The edge case? The unusual context?
+3. THE COMPLETENESS JUDGE — what important aspect did Worker completely miss? What was not said that should have been?
+
+For each of the five dimensions, play your adversarial role actively, not passively:
+- correctness: Actively try to find a factual error. If you cannot, score 0.90+.
+- completeness: List everything the task asked for. Map each item to Worker's response. Flag missing items.
+- consistency: Quote any two sentences that could contradict each other.
+- usefulness: Ask: "Will this actually help the user in their real-world context, or just sound right?"
+- safety: Is any advice here potentially harmful if followed by a non-expert?
+
+The repair_guidance must be SPECIFIC: "In paragraph 2, replace X with Y because Z."
+Not: "Improve accuracy." That is useless.
+
+Your verdict should be "repair_needed" unless the response is genuinely excellent.
+A score of "pass" means you could not find meaningful flaws after actively trying.
+
+Output: valid JSON only.`;
+
+***
+
+# IMPROVEMENT 6: STRUCTURED OUTPUT ENFORCEMENT
+
+## The Problem
+Small LLMs are inconsistent at producing valid JSON, especially Scout and Critic.
+When they fail, the pipeline crashes or falls back to garbage output.
+
+## Fix: Two-stage structured output with validation and retry
+
+// src/agents/StructuredOutputParser.ts
+
+export async function parseWithRetry<T>(
+  rawText: string,
+  schema: object,
+  engine: InferenceEngine,
+  maxRetries: number = 2
+): Promise<T> {
+
+  // Attempt 1: direct JSON parse (handles 70-80% of cases)
+  try {
+    const cleaned = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
+    return JSON.parse(cleaned) as T;
+  } catch (e) {}
+
+  // Attempt 2: extract JSON from surrounding text using regex
+  try {
+    const match = rawText.match(/\{[\s\S]*\}/);
+    if (match) return JSON.parse(match

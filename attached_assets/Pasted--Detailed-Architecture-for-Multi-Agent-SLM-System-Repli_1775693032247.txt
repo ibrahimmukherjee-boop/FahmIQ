@@ -1,0 +1,275 @@
+# Detailed Architecture for Multi-Agent SLM System (Replit-Ready)
+
+This document provides a complete, implementable blueprint for building the system on **Replit**. The architecture uses **open-source SLMs (≤7B)**, **agent orchestration**, **RAG**, **web search**, and a **code interpreter** – all running within Replit's environment (with GPU optional but recommended).
+
+---
+
+## 1. High-Level System Diagram
+
+```
+┌─────────────┐     ┌─────────────────────────────────────────────────────────────┐
+│   User      │     │                      Replit App (Python)                    │
+│  (Browser)  │────▶│  ┌──────────┐    ┌──────────┐    ┌──────────────────────┐  │
+└─────────────┘     │  │  Flask/  │    │  Router  │    │   Specialist Agents   │  │
+                    │  │ FastAPI  │───▶│ (3B SLM) │───▶│ (8x parallel SLMs)     │  │
+                    │  │  Server  │    └──────────┘    │ - QM formalism        │  │
+                    │  └────┬─────┘         │           │ - Experiments         │  │
+                    │       │               │           │ - Interpretations     │  │
+                    │       │               │           │ - Quantum gravity     │  │
+                    │       │               │           │ - Quantum computing   │  │
+                    │       │               │           │ - QFT                 │  │
+                    │       │               │           │ - Quantum biology     │  │
+                    │       │               │           │ - Many-body physics   │  │
+                    │       │               │           └───────────┬──────────┘  │
+                    │       │               │                       │             │
+                    │       │               │         ┌─────────────▼───────────┐  │
+                    │       │               │         │    Synthesizer (7B)    │  │
+                    │       │               │         │   + Confidence Voting │  │
+                    │       │               │         └─────────────┬───────────┘  │
+                    │       │               │                       │             │
+                    │       │               │         ┌─────────────▼───────────┐  │
+                    │       │               │         │    Output Formatter     │  │
+                    │       │               │         └─────────────┬───────────┘  │
+                    │       │               │                       │             │
+                    │       │               │    ┌──────────────────┼──────────────────┐
+                    │       │               │    │                  │                  │
+                    │       │         ┌─────▼─────┐  ┌──────────────▼──────────┐  ┌────▼─────┐
+                    │       │         │  RAG      │  │   Web Search Tool       │  │  Code    │
+                    │       │         │ (Qdrant)  │  │   (Exa/Bing API)        │  │Interpreter│
+                    │       │         └───────────┘  └─────────────────────────┘  └──────────┘
+                    │       │                                                             │
+                    │       └─────────────────────────────────────────────────────────────┘
+                    │
+                    └───► Optional: Background task queue (Celery) for long queries
+```
+
+---
+
+## 2. Component Details (Implementable)
+
+### 2.1 Web Server (Flask/FastAPI)
+- **File:** `app.py`
+- **Endpoints:**
+  - `POST /query` – accepts `{ "question": "...", "use_web": true/false, "code_allowed": true/false }`
+  - `GET /status/{task_id}` – for async polling (if query takes >10s)
+- **Async pattern:** Use `asyncio` or Celery + Redis (Replit provides Redis).
+
+### 2.2 Router (SLM 3B)
+- **Model:** `meta-llama/Llama-3.2-3B-Instruct` (or `microsoft/Phi-3-mini-4k-instruct` for speed)
+- **Task:** Decompose user query into subtasks, assign each to a specialist agent.
+- **Prompt template:**
+  ```json
+  {
+    "query": "...",
+    "available_agents": ["qm_formalism", "experiments", "interpretations", "quantum_gravity", "quantum_computing", "qft", "quantum_biology", "many_body"],
+    "output_format": { "subtasks": [{"agent": "string", "question": "string"}] }
+  }
+  ```
+- **Inference:** Use `transformers` with `device_map="auto"` (GPU if available) or `llama-cpp-python` (CPU).
+
+### 2.3 Specialist Agents (8 SLMs, ≤7B each)
+All agents share the same base model but fine-tuned on domain data. **To save VRAM, load them one at a time** (dynamic loading) or use a single base model with **LoRA adapters** switched per agent.
+
+#### Recommended Base Model: `microsoft/Phi-3.5-mini-instruct` (3.8B) – fast, cheap, good reasoning.
+- **Fine-tuning method:** LoRA (rank=16) on 50k Q&A pairs per domain.
+- **Serving:** Use `vLLM` if GPU memory ≥16GB; else use `transformers` with 4-bit quantization (`bitsandbytes`).
+
+**Agent List & Specialization Data Sources:**
+| Agent ID | Focus | Training Data Example |
+|----------|-------|----------------------|
+| `qm_formalism` | Schrödinger eq, Hilbert space, path integrals | arXiv:quant-ph textbooks, StackExchange |
+| `experiments` | Double-slit, Bell tests, QED precision, recent 2025-26 results | Live RAG from arXiv / Physics Rev Letters |
+| `interpretations` | Copenhagen, MWI, Bohmian, QBism, collapse models | Stanford Encyclopedia, survey papers |
+| `quantum_gravity` | String theory, LQG, AdS/CFT, experimental bounds | arXiv:gr-qc, recent reviews |
+| `quantum_computing` | Qubits, gates, error correction, supremacy | arXiv:quant-ph, Qiskit tutorials |
+| `qft` | QED, Standard Model, renormalization | Peskin & Schroeder, arXiv:hep-th |
+| `quantum_biology` | Photosynthesis, magnetoreception, enzyme kinetics | Nature journals, arXiv:q-bio |
+| `many_body` | Superconductivity, quantum Hall, BEC | Condensed matter textbooks |
+
+**Agent API (simplified):**
+```python
+def agent_query(agent_id: str, question: str, rag_context: str = None) -> dict:
+    # Load LoRA adapter for this agent
+    model, tokenizer = load_agent(agent_id)
+    prompt = f"<|user|>\n{question}\nContext: {rag_context}\n<|assistant|>"
+    output = model.generate(...)
+    return {"answer": output, "confidence": compute_confidence(output)}
+```
+
+### 2.4 RAG Engine
+- **Vector DB:** Qdrant (self-hosted on Replit or use Qdrant Cloud free tier)
+- **Embedding model:** `nomic-ai/nomic-embed-text-v1.5` (137M params) – fast and open.
+- **Data sources (pre-indexed):**
+  - arXiv snapshots: `quant-ph`, `gr-qc`, `hep-th`, `cond-mat` (last 5 years, updated weekly via cron)
+  - Wikipedia: Quantum physics articles (parsed)
+  - Preprints: Fetch from arXiv API daily.
+- **Indexing pipeline:** `documents → chunk (512 tokens) → embed → Qdrant`
+- **Retrieval:** For each subtask, retrieve top 5 chunks, pass as context to agent.
+
+### 2.5 Web Search Tool
+- **API:** Exa.ai (has specific `type="neural"` for factual queries) or Bing Web Search API.
+- **Fallback:** `duckduckgo-search` Python library (free, no API key).
+- **Usage:** Triggered when:
+  - RAG has no results for a query about recent dates (e.g., "2025").
+  - Confidence of an agent's answer < 0.7 (from internal model probability).
+- **Result processing:** Scrape top 3 URLs, extract text via `trafilatura`, chunk, re-rank.
+
+### 2.6 Code Interpreter
+- **Sandbox:** Use `E2B` (e2b.dev) – provides secure Python execution. Replit can also run its own Docker container.
+- **Capabilities:** 
+  - Run simulations (e.g., double-slit interference pattern)
+  - Compute statistical confidence intervals (bootstrap)
+  - Extract data from paper PDFs (if provided URL)
+- **Invocation:** Synthesizer can request code execution if a numerical check is needed (e.g., "verify that the latest Bell test p-value is < 1e-9").
+
+### 2.7 Synthesizer (7B SLM)
+- **Model:** `mistralai/Mistral-7B-Instruct-v0.3` (or `gemma-2-9b-it` if more VRAM)
+- **Task:** Merge outputs from all agents, resolve conflicts via majority vote, compute final confidence (Bayesian or weighted average), and produce structured JSON.
+- **Conflict resolution algorithm:**
+  1. If two agents give contradictory factual claims, trigger web search for verification.
+  2. If no web resolution, output both with confidence penalty.
+- **Output schema:**
+  ```json
+  {
+    "sections": [
+      {"title": "...", "content": "...", "confidence_interval": [0.95, 0.99], "sources": [{"agent": "...", "url": "..."}]}
+    ],
+    "summary": "...",
+    "meta_analysis": {"agreement_level": 0.82, "contentious_topics": [...]}
+  }
+  ```
+
+### 2.8 Memory Module
+- **Short-term:** Redis (provided by Replit) – stores conversation history (last 10 turns).
+- **Long-term:** SQLite database with a table `verified_facts` (fact_string, confidence, last_updated, source_agents).
+  - After each query, extract factual claims (using a small NER model like `dslim/bert-base-NER`) and insert/update confidence.
+
+---
+
+## 3. Implementation Steps for Replit
+
+### Step 1: Replit Environment Setup
+- Create a new **Python Repl** with **GPU** (if available in your Replit plan – otherwise CPU with 4-bit quantization is acceptable for 3B-7B models).
+- **Required secrets** (in Replit Secrets):
+  - `EXA_API_KEY` (or `BING_API_KEY`)
+  - `QDRANT_API_KEY` (if using cloud)
+  - `HF_TOKEN` (for gated models like Llama-3.2)
+- Install dependencies:
+  ```
+  torch transformers accelerate bitsandbytes qdrant-client sentence-transformers flask flask-cors exa_py duckduckgo_search e2b trafilatura lxml redis celery
+  ```
+
+### Step 2: Model Loading & Quantization
+Create `model_loader.py`:
+```python
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+import torch
+
+quant_config = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16)
+
+def load_model(model_id):
+    tokenizer = AutoTokenizer.from_pretrained(model_id)
+    model = AutoModelForCausalLM.from_pretrained(model_id, quantization_config=quant_config, device_map="auto")
+    return model, tokenizer
+```
+
+### Step 3: Build RAG Index
+- Write a script `build_rag.py` that:
+  - Downloads arXiv abstracts (via `arxiv` package) for each category.
+  - Chunks and embeds.
+  - Uploads to Qdrant (local or cloud).
+- Schedule via Replit **Cron Jobs** (Replit Deployments allow scheduled workflows).
+
+### Step 4: Agent Server (FastAPI)
+Create `agents.py` with a class `AgentOrchestrator` that:
+- Manages router, specialists, synthesizer.
+- Implements parallel execution (`asyncio.gather`).
+- Implements dynamic LoRA adapter loading (using `peft`).
+
+### Step 5: Flask API Endpoint
+`main.py`:
+```python
+from flask import Flask, request, jsonify
+from agents import AgentOrchestrator
+import asyncio
+
+app = Flask(__name__)
+orchestrator = AgentOrchestrator()
+
+@app.route('/query', methods=['POST'])
+def query():
+    data = request.json
+    question = data['question']
+    use_web = data.get('use_web', True)
+    code_allowed = data.get('code_allowed', True)
+    
+    # Run async in Flask
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    result = loop.run_until_complete(orchestrator.process(question, use_web, code_allowed))
+    return jsonify(result)
+```
+
+### Step 6: Frontend (Optional but recommended)
+A simple HTML/JS page that sends POST requests and displays markdown with citations. Replit can serve static files from `/static`.
+
+### Step 7: Deployment on Replit
+- Click **"Deploy"** in Replit.
+- Set environment variables.
+- Ensure `gunicorn` runs the app: `gunicorn main:app -b 0.0.0.0:8080`
+
+---
+
+## 4. Performance Optimizations for Replit
+
+| Bottleneck | Solution |
+|------------|----------|
+| Loading 8 models sequentially | Use a single base model (e.g., Phi-3.5-mini) with **8 LoRA adapters** and switch adapters per agent without reloading model. (PEFT supports `disable_adapter` and `load_adapter`). |
+| VRAM limit (Replit GPU often 16GB) | 4-bit quantized Phi-3.5 (3.8B) uses ~2.5GB. With 8 adapters, still <4GB. Synthesizer (Mistral-7B, 4-bit) uses ~4GB. Total <9GB. |
+| Slow inference | Use `vLLM` for the router and synthesizer (batched). For specialists, use `transformers` with `torch.compile`. |
+| Web search latency | Run web search in parallel with agent inference – most agents don't need live web. Only trigger when confidence low. |
+| Cold starts | Keep base model loaded permanently; adapters hot-swap. |
+
+---
+
+## 5. Example Output for Quantum Physics Query (as Code)
+
+The system will produce a JSON that your frontend renders. Here's a snippet:
+
+```json
+{
+  "sections": [
+    {
+      "title": "Core Framework",
+      "content": "Quantum physics describes matter at atomic scales via superposition and entanglement. Recent 2025 experiment confirmed superposition in a 0.1mg crystal (Science, 2025).",
+      "confidence_interval": [0.998, 0.999],
+      "sources": [{"agent": "qm_formalism", "url": "arxiv:2503.12345"}, {"agent": "experiments", "url": "https://doi.org/10.1126/science..."}]
+    }
+  ],
+  "summary": "Quantum physics is empirically verified to 99.9% confidence but interpretation remains debated (agreement <20%).",
+  "meta_analysis": {
+    "agreement_level": 0.85,
+    "contentious_topics": ["measurement problem", "quantum gravity theory"]
+  }
+}
+```
+
+---
+
+## 6. Testing & Validation
+
+- **Unit tests:** Each agent's response schema and confidence scoring.
+- **Integration test:** Query "Explain Bell's theorem" – must return 5+ citations, confidence >0.95.
+- **Adversarial test:** "Is Many-Worlds interpretation proven?" – must correctly output low confidence and cite lack of evidence.
+
+---
+
+## 7. Future Extensions (Manus AI / Perplexity-like)
+
+- **Autonomous loop:** Allow the system to ask clarifying questions or run multiple rounds of search.
+- **Tool use:** Connect to a browser automation tool (e.g., `browserbase`) for deeper web interaction.
+- **Memory:** Long-term fact database that persists across Replit restarts (use Replit Database or external PostgreSQL).
+
+---
+
+This architecture is **fully implementable on Replit within 1-2 weeks** by a single developer. Would you like me to provide the actual code for the model loader, router, and a sample agent?

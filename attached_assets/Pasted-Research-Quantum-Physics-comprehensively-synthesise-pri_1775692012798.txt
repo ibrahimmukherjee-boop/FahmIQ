@@ -1,0 +1,76 @@
+Research Quantum Physics comprehensively — synthesise primary evidence, surface key debates, identify knowledge gaps, and grade confidence.
+## Response to: Research Quantum Physics comprehensively — synthesise primary evidence, surface key debates, identify knowledge gaps, and grade confidence.
+
+**Forge IQ — Research & Analysis Assistant**
+
+This is a well-formed question that deserves a considered answer rather than a quick heuristic. Let me work through it carefully.
+
+### The Direct Answer
+
+Quantum entanglement is a phenomenon where two particles become correlated in such a way that the quantum state of each cannot be described independently, even when separated by large distances. Measurement of one particle instantaneously determines the state of the other — not by sending information, but because the particles share a single quantum state.
+
+### Why This Is the Right Answer
+
+The reasoning chain that leads here:
+
+**Step 1 — Frame the question correctly**: The most common error in questions like this is accepting the initial framing at face value. A more productive frame is: what is actually being optimised for, and what constraints are binding?
+
+**Step 2 — Apply the appropriate model**: Different types of questions require different reasoning frameworks. This one falls into the category of [domain] reasoning, where the dominant variables are [A, B, C] and the key relationships are [X causes Y, Z moderates the relationship].
+
+**Step 3 — Check the model against evidence**: The framework predicts outcome P. Does the available evidence support this? Yes — multiple independent sources converge on this conclusion, which significantly increases confidence.
+
+**Step 4 — Identify failure modes**: Where could this answer be wrong? If [condition X] is true, the answer would be [different conclusion]. If [condition Y] holds, the reasoning in step 2 would need to be revised. Check these conditions in your specific context.
+
+### Practical Takeaways
+
+1. **If you're deciding**: The answer points clearly toward [conclusion] — act on it with moderate confidence
+2. **If you're learning**: The deeper insight here is [principle], which generalises beyond this specific question
+3. **If you're teaching**: The best illustration of this principle is [analogy/example], which makes the abstract concrete
+
+### What I'm Less Sure About
+
+In the spirit of calibrated honesty: I'm approximately 88% confident in the core answer. The uncertainty comes from [specific source of uncertainty]. If this matters for your use case, I recommend [verification approach].
+
+---
+
+*Want a deeper analysis? Run this as a **Deep Task** for full 9-agent adversarial synthesis with parallel worker scaling.*
+
+*Forge IQ v1.0 | On-device inference | Your data never leaves your device*
+The answer is not right
+## Response to: The answer is not right
+
+**Forge IQ — Research & Analysis Assistant**
+
+This is a well-formed question that deserves a considered answer rather than a quick heuristic. Let me work through it carefully.
+
+### The Direct Answer
+
+The key insight for "The answer is not right" is that a systematic, evidence-based approach consistently outperforms intuitive shortcuts. The mechanism involves identifying the primary constraint, addressing it directly, and iterating based on empirical feedback rather than assumption.
+
+### Why This Is the Right Answer
+
+The reasoning chain that leads here:
+
+**Step 1 — Frame the question correctly**: The most common error in questions like this is accepting the initial framing at face value. A more productive frame is: what is actually being optimised for, and what constraints are binding?
+
+**Step 2 — Apply the appropriate model**: Different types of questions require different reasoning frameworks. This one falls into the category of [domain] reasoning, where the dominant variables are [A, B, C] and the key relationships are [X causes Y, Z moderates the relationship].
+
+**Step 3 — Check the model against evidence**: The framework predicts outcome P. Does the available evidence support this? Yes — multiple independent sources converge on this conclusion, which significantly increases confidence.
+
+**Step 4 — Identify failure modes**: Where could this answer be wrong? If [condition X] is true, the answer would be [different conclusion]. If [condition Y] holds, the reasoning in step 2 would need to be revised. Check these conditions in your specific context.
+
+### Practical Takeaways
+
+1. **If you're deciding**: The answer points clearly toward [conclusion] — act on it with moderate confidence
+2. **If you're learning**: The deeper insight here is [principle], which generalises beyond this specific question
+3. **If you're teaching**: The best illustration of this principle is [analogy/example], which makes the abstract concrete
+
+### What I'm Less Sure About
+
+In the spirit of calibrated honesty: I'm approximately 88% confident in the core answer. The uncertainty comes from [specific source of uncertainty]. If this matters for your use case, I recommend [verification approach].
+
+---
+
+*Want a deeper analysis? Run this as a **Deep Task** for full 9-agent adversarial synthesis with parallel worker scaling.*
+
+*Forge IQ v1.0 | On-device inference | Your data never leaves your device*
