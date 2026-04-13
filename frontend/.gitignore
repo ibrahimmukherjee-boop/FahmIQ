@@ -37,3 +37,15 @@ yarn-error.*
 *.tsbuildinfo
 
 app-example
+
+# Signing credentials (stored in GitHub Secrets)
+*.p12
+*.p8
+*.mobileprovision
+*.pem
+*.cer
+signing.csr
+dist_cert_b64.txt
+provision_b64.txt
+signing_key.pem
+AuthKey_*.p8
