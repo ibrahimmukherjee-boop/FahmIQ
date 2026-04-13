@@ -1,0 +1,54 @@
+{
+  "expo": {
+    "name": "FahmIQ",
+    "slug": "forge-iq",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "forge-iq",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/splash.png",
+      "resizeMode": "cover",
+      "backgroundColor": "#F8F8FC"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.seekconsultingltd.forgeiq",
+      "buildNumber": "12",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "FahmIQ uses your photo library to attach images to tasks.",
+        "NSCameraUsageDescription": "FahmIQ uses the camera to capture documents.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.forgeiq.app"
+    },
+    "web": {
+      "favicon": "./assets/images/icon.png"
+    },
+    "plugins": [
+      [
+        "expo-router",
+        {
+          "origin": "https://replit.com/"
+        }
+      ],
+      "expo-font",
+      "expo-web-browser",
+      "expo-document-picker"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "e319e93e-9212-406e-9191-c7ef5bbcc895"
+      }
+    },
+    "owner": "seekconsultingltd"
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "cli": {
+    "version": ">= 12.0.0",
+    "appVersionSource": "local"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "preview": {
+      "distribution": "internal",
+      "ios": { "resourceClass": "m-medium" }
+    },
+    "production": {
+      "autoIncrement": true,
+      "credentialsSource": "local",
+      "ios": {
+        "resourceClass": "m-medium"
+      },
+      "env": {
+        "NODE_ENV": "production",
+        "EXPO_PUBLIC_API_URL": "https://b5afc9b2-95ef-4e81-962e-c7aff83638dd-00-d8i8x88kku2h.picard.replit.dev:8080/api"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "ascApiKeyIssuerId": "4c19f293-33c2-47d3-a911-766e694b8095",
+        "ascApiKeyId": "RZG4B93C88",
+        "ascApiKeyPath": "./AuthKey_RZG4B93C88.p8",
+        "appleTeamId": "XGZCQB2V7M",
+        "ascAppId": "6761907571"
+      }
+    }
+  }
+}
