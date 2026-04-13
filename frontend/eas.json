@@ -21,17 +21,21 @@
     "production": {
       "ios": {
         "buildConfiguration": "Release",
-        "autoIncrement": true
+        "autoIncrement": true,
+        "image": "macos-sequoia-15.4-xcode-16.3"
       },
-      "autoSubmit": false
+      "autoSubmit": true,
+      "submitProfile": "production"
     }
   },
   "submit": {
     "production": {
       "ios": {
-        "appleId": "fahmiq@seekconsulting.co.uk",
         "ascAppId": "6761907571",
-        "appleTeamId": "RZG4B93C88"
+        "appleTeamId": "RZG4B93C88",
+        "ascApiKeyId": "9U8HZ8CRST",
+        "ascApiKeyIssuerId": "4c19f293-33c2-47d3-a911-766e694b8095",
+        "ascApiKeyPath": "./AuthKey_9U8HZ8CRST.p8"
       }
     }
   }

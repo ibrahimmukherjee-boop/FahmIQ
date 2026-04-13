@@ -1,0 +1,39 @@
+name: Build & Submit FahmIQ to App Store
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-and-submit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup EAS CLI
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        working-directory: ./frontend
+        run: yarn install --frozen-lockfile
+
+      - name: Write Apple API Key
+        working-directory: ./frontend
+        run: echo "${{ secrets.ASC_API_KEY }}" > AuthKey_9U8HZ8CRST.p8
+
+      - name: Build iOS
+        working-directory: ./frontend
+        run: eas build --platform ios --profile production --non-interactive
+
+      - name: Submit to App Store
+        working-directory: ./frontend
+        run: eas submit --platform ios --profile production --non-interactive
