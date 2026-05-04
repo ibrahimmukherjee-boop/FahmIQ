@@ -7,7 +7,7 @@ This document contains a standard, editable template for an Apple App Store Priv
 
 ***
 
-## Privacy Policy Template
+## Privacy Policy
 
 **Privacy Policy**
 
