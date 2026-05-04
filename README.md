@@ -1,13 +1,9 @@
-# Apple App Privacy Policy and Support Page Template
+Standard Apple EULA applies :- 
+[
+](https://www.apple.com/legal/internet-services/itunes/dev/stdeula/)
+
 
 This document contains a standard, editable template for an Apple App Store Privacy Policy page and a Support page.
-
-## How to use
-
-1. Replace all text in square brackets with your app or company details.
-2. Publish the Privacy Policy text at a public URL such as `https://yourdomain.com/privacy`.
-3. Publish the Support text at a public URL such as `https://yourdomain.com/support`.
-4. Add those URLs into App Store Connect.
 
 ***
 
